@@ -1,0 +1,509 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#050608">
+<title>색칠 격자</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap">
+<style>
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; }
+[hidden] { display: none !important; }
+/* Layout: arcade screen. The grid fills the whole viewport; a tiny score readout sits top-left and two pixel icon buttons top-right, floating over the board. Deliberately single dark theme. */
+:root {
+  --bg: #050608;
+  --cell-empty: #12151c;
+  --hud-bg: rgba(5, 6, 8, 0.82);
+  --hud-fg: #e8ffe8;
+  --hud-dim: #5d6b62;
+  --hud-line: #2a3a30;
+  --hud-glow: #39ff88;
+  --font-pixel: "Press Start 2P", ui-monospace, "Courier New", monospace;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--hud-fg);
+  font-family: var(--font-pixel);
+  overflow: hidden;
+}
+#wrap {
+  position: fixed;
+  top: env(safe-area-inset-top, 0px);
+  bottom: env(safe-area-inset-bottom, 0px);
+  left: env(safe-area-inset-left, 0px);
+  right: env(safe-area-inset-right, 0px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+canvas {
+  display: block;
+  touch-action: none;
+  cursor: crosshair;
+  background: var(--bg);
+  user-select: none;
+  -webkit-user-select: none;
+  image-rendering: pixelated;
+}
+/* 브라운관 주사선 */
+.scan {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(to bottom, rgba(255,255,255,0.035) 0 1px, transparent 1px 3px);
+  box-shadow: inset 0 0 120px rgba(0,0,0,0.65);
+}
+.hud {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 10px);
+  display: flex;
+  gap: 6px;
+  z-index: 2;
+}
+.hud.left { left: calc(env(safe-area-inset-left, 0px) + 10px); }
+.hud.right { right: calc(env(safe-area-inset-right, 0px) + 10px); }
+.score {
+  margin: 0;
+  padding: 9px 10px 8px;
+  background: var(--hud-bg);
+  box-shadow: 0 0 0 2px var(--hud-line);
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.score b { color: var(--hud-glow); font-weight: 400; text-shadow: 0 0 6px var(--hud-glow); }
+.score span { color: var(--hud-dim); }
+.ibtn {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: var(--hud-bg);
+  color: var(--hud-fg);
+  box-shadow: 0 0 0 2px var(--hud-line);
+  cursor: pointer;
+}
+.ibtn svg { width: 20px; height: 20px; shape-rendering: crispEdges; fill: currentColor; }
+.ibtn:hover { color: var(--hud-glow); box-shadow: 0 0 0 2px var(--hud-glow); }
+.ibtn:active { transform: translate(1px, 1px); }
+.ibtn:focus-visible { outline: 2px solid var(--hud-glow); outline-offset: 2px; }
+#sound[aria-pressed="false"] { color: var(--hud-dim); }
+#life[aria-pressed="true"] { color: var(--hud-glow); box-shadow: 0 0 0 2px var(--hud-glow); }
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.72);
+  padding: calc(env(safe-area-inset-top, 0px) + 16px) max(16px, env(safe-area-inset-right, 0px)) calc(env(safe-area-inset-bottom, 0px) + 16px) max(16px, env(safe-area-inset-left, 0px));
+}
+.modal[hidden] { display: none; }
+.panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  max-width: min(520px, 100%);
+  max-height: 100%;
+  padding: 18px;
+  background: var(--bg);
+  box-shadow: 0 0 0 2px var(--hud-glow), 0 0 24px rgba(57, 255, 136, 0.25);
+}
+.mtitle { margin: 0; font-size: 14px; color: var(--hud-glow); text-shadow: 0 0 6px var(--hud-glow); letter-spacing: 0.12em; }
+#shotImg { display: block; max-width: 100%; max-height: 60vh; image-rendering: pixelated; box-shadow: 0 0 0 2px var(--hud-line); }
+.hint { margin: 0; font-family: system-ui, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; font-size: 13px; line-height: 1.5; color: var(--hud-fg); text-align: center; }
+.tbtn {
+  font-family: var(--font-pixel);
+  font-size: 11px;
+  padding: 11px 16px 10px;
+  border: 0;
+  background: var(--hud-glow);
+  color: var(--bg);
+  cursor: pointer;
+}
+.tbtn:focus-visible { outline: 2px solid var(--hud-fg); outline-offset: 2px; }
+</style>
+</head>
+<body>
+
+<div id="wrap"><canvas id="board" aria-label="색칠 격자. 누르거나 문지르면 칸이 칠해집니다."></canvas></div>
+<div class="scan" aria-hidden="true"></div>
+<div class="hud left"><p class="score" id="count" aria-live="polite"><b>0000</b><span>/0000</span></p></div>
+<div class="hud right">
+  <button id="life" class="ibtn" type="button" aria-pressed="false" aria-label="라이프 게임 시작" title="라이프 게임">
+    <svg viewBox="0 0 10 10" aria-hidden="true">
+      <g class="play"><rect x="3" y="1" width="1" height="8"/><rect x="4" y="2" width="1" height="6"/><rect x="5" y="3" width="1" height="4"/><rect x="6" y="4" width="1" height="2"/></g>
+      <g class="pause" style="display:none"><rect x="2" y="2" width="2" height="6"/><rect x="6" y="2" width="2" height="6"/></g>
+    </svg>
+  </button>
+  <button id="sound" class="ibtn" type="button" aria-pressed="true" aria-label="소리 끄기" title="소리">
+    <svg viewBox="0 0 10 10" aria-hidden="true">
+      <rect x="1" y="3" width="2" height="4"/><rect x="3" y="2" width="1" height="6"/><rect x="4" y="1" width="1" height="8"/>
+      <g class="on"><rect x="6" y="4" width="1" height="2"/><rect x="7" y="2" width="1" height="1"/><rect x="8" y="3" width="1" height="4"/><rect x="7" y="7" width="1" height="1"/></g>
+      <g class="off" style="display:none"><rect x="6" y="3" width="1" height="1"/><rect x="7" y="4" width="1" height="2"/><rect x="8" y="3" width="1" height="1"/><rect x="6" y="6" width="1" height="1"/><rect x="8" y="6" width="1" height="1"/></g>
+    </svg>
+  </button>
+  <button id="reset" class="ibtn" type="button" aria-label="초기화" title="초기화">
+    <svg viewBox="0 0 10 10" aria-hidden="true">
+      <rect x="3" y="1" width="4" height="1"/><rect x="2" y="2" width="1" height="1"/><rect x="7" y="2" width="1" height="1"/>
+      <rect x="1" y="3" width="1" height="4"/><rect x="8" y="3" width="1" height="1"/><rect x="2" y="7" width="1" height="1"/>
+      <rect x="3" y="8" width="4" height="1"/><rect x="7" y="7" width="1" height="1"/><rect x="8" y="6" width="1" height="1"/>
+      <rect x="6" y="3" width="3" height="1"/><rect x="8" y="1" width="1" height="2"/>
+    </svg>
+  </button>
+  <button id="save" class="ibtn" type="button" aria-label="그림으로 저장" title="그림으로 저장">
+    <svg viewBox="0 0 10 10" aria-hidden="true">
+      <rect x="4" y="1" width="2" height="4"/><rect x="2" y="5" width="6" height="1"/><rect x="3" y="6" width="4" height="1"/><rect x="4" y="7" width="2" height="1"/>
+      <rect x="1" y="9" width="8" height="1"/>
+    </svg>
+  </button>
+</div>
+
+<div class="modal" id="shot" hidden>
+  <div class="panel" role="dialog" aria-modal="true" aria-labelledby="shotTitle">
+    <p class="mtitle" id="shotTitle">SAVE</p>
+    <img id="shotImg" alt="지금 그린 격자 그림">
+    <p class="hint">그림을 길게 누르거나 마우스 오른쪽 버튼을 눌러 저장하세요.</p>
+    <button id="shotClose" class="tbtn" type="button">CLOSE</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  var canvas = document.getElementById('board');
+  var ctx = canvas.getContext('2d');
+  var wrap = document.getElementById('wrap');
+  var countEl = document.getElementById('count');
+  var soundBtn = document.getElementById('sound');
+  var TARGET = 22;            // 한 칸의 목표 크기(px)
+  var GAP = 2;
+  var POP_MS = 260;
+  var RIPPLE_R = 4;           // 물결이 퍼지는 반지름(칸)
+  var RING_MS = 70;           // 한 고리가 퍼지는 간격
+  var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var cols = 0, rows = 0, cell = 0, dpr = 1;
+  var hue = new Float32Array(0);    // 칸 색상(NaN = 빈칸)
+  var light = new Float32Array(0);
+  var phase = new Float32Array(0);  // 일렁임 위상
+  var stamp = new Float64Array(0);  // 칠한 시각
+  var pending = [];                 // 물결로 칠해질 예정인 칸들
+
+  /* ---------- 소리 ---------- */
+  var audio = null, soundOn = true, lastNote = 0;
+  // 장조 5음 음계 2옥타브: 색상(hue)에 따라 음이 정해진다
+  var SCALE = [261.63, 293.66, 329.63, 392.0, 440.0, 523.25, 587.33, 659.25, 783.99, 880.0];
+  function ensureAudio() {
+    if (!soundOn) return;
+    try {
+      if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+      if (audio.state === 'suspended') audio.resume();
+    } catch (e) { audio = null; }
+  }
+  function playNote(h, vol) {
+    if (!soundOn || !audio) return;
+    var now = performance.now();
+    if (now - lastNote < 45) return;
+    lastNote = now;
+    var f = SCALE[Math.floor(((h % 360) + 360) % 360 / 36)];
+    // 8비트 소리: 사각파로 짧게 '삑', 끝에 한 옥타브 위로 살짝 튄다
+    var t = audio.currentTime;
+    var g = audio.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol || 0.05, t + 0.004);
+    g.gain.setValueAtTime(vol || 0.05, t + 0.06);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+    g.connect(audio.destination);
+    var o = audio.createOscillator();
+    o.type = 'square';
+    o.frequency.setValueAtTime(f * 2, t);
+    o.frequency.setValueAtTime(f * 4, t + 0.05);
+    o.connect(g);
+    o.start(t); o.stop(t + 0.2);
+  }
+  soundBtn.addEventListener('click', function () {
+    soundOn = !soundOn;
+    soundBtn.setAttribute('aria-pressed', String(soundOn));
+    soundBtn.setAttribute('aria-label', soundOn ? '소리 끄기' : '소리 켜기');
+    soundBtn.querySelector('.on').style.display = soundOn ? '' : 'none';
+    soundBtn.querySelector('.off').style.display = soundOn ? 'none' : '';
+    if (soundOn) ensureAudio();
+  });
+
+  /* ---------- 격자 ---------- */
+  function updateCount() {
+    var n = 0;
+    for (var i = 0; i < hue.length; i++) if (!isNaN(hue[i])) n++;
+    countEl.innerHTML = '<b>' + String(n).padStart(4, '0') + '</b><span>/' + String(hue.length).padStart(4, '0') + '</span>';
+  }
+
+  function setCell(i, h, now, l) {
+    hue[i] = ((h % 360) + 360) % 360;
+    light[i] = l == null ? 52 + Math.random() * 14 : l;
+    phase[i] = Math.random() * Math.PI * 2;
+    stamp[i] = now;
+  }
+
+  function layout() {
+    var r = wrap.getBoundingClientRect();
+    var w = Math.floor(r.width), h = Math.floor(r.height);
+    if (w < 40 || h < 40) return;
+    var oc = cols, or = rows;
+    var oh = hue, ol = light, op = phase, os = stamp;
+    cols = Math.max(8, Math.round(w / TARGET));
+    cell = w / cols;
+    rows = Math.max(8, Math.floor(h / cell));
+    dpr = window.devicePixelRatio || 1;
+    canvas.style.width = w + 'px';
+    canvas.style.height = (rows * cell) + 'px';
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(rows * cell * dpr);
+    var n = cols * rows;
+    hue = new Float32Array(n).fill(NaN);
+    light = new Float32Array(n); phase = new Float32Array(n); stamp = new Float64Array(n);
+    for (var y = 0; y < Math.min(or, rows); y++) {
+      for (var x = 0; x < Math.min(oc, cols); x++) {
+        var a = y * cols + x, b = y * oc + x;
+        hue[a] = oh[b]; light[a] = ol[b]; phase[a] = op[b]; stamp[a] = os[b];
+      }
+    }
+    pending = [];
+    if (!oh.length) seed();
+    updateCount();
+  }
+
+  // 처음 열었을 때 가운데에 색이 번진 자국을 남겨 둔다
+  function seed() {
+    var cx = Math.floor(cols / 2), cy = Math.floor(rows / 2), base = Math.random() * 360;
+    for (var y = 0; y < rows; y++) {
+      for (var x = 0; x < cols; x++) {
+        var d = Math.hypot(x - cx, (y - cy) * 0.9);
+        if (d < 4.2 && Math.random() < 0.85 - d * 0.1) {
+          setCell(y * cols + x, base + d * 38 + Math.random() * 30, -1e9);
+        }
+      }
+    }
+  }
+
+  // 물결: 누른 칸에서 고리 모양으로 색이 퍼진다
+  function ripple(cx, cy) {
+    var now = performance.now();
+    var base = Math.random() * 360;
+    for (var dy = -RIPPLE_R; dy <= RIPPLE_R; dy++) {
+      for (var dx = -RIPPLE_R; dx <= RIPPLE_R; dx++) {
+        var x = cx + dx, y = cy + dy;
+        if (x < 0 || y < 0 || x >= cols || y >= rows) continue;
+        var d = Math.hypot(dx, dy);
+        if (d > RIPPLE_R + 0.3) continue;
+        var ring = Math.round(d);
+        pending.push({ i: y * cols + x, h: base + ring * 28 + Math.random() * 14, at: now + (reduce ? 0 : ring * RING_MS), ring: ring });
+      }
+    }
+  }
+
+  var lastRingSound = -1, lastRingAt = 0;
+  function flushPending(now) {
+    if (!pending.length) return false;
+    var keep = [], changed = false;
+    for (var k = 0; k < pending.length; k++) {
+      var p = pending[k];
+      if (p.at <= now) {
+        setCell(p.i, p.h, now);
+        changed = true;
+        // 고리마다 음 하나씩 → 아르페지오
+        if (p.at !== lastRingAt) { lastRingAt = p.at; playNote(p.h, 0.1); }
+      } else keep.push(p);
+    }
+    pending = keep;
+    return changed;
+  }
+
+  /* ---------- 라이프 게임 ---------- */
+  var lifeBtn = document.getElementById('life');
+  var lifeOn = false, lastGen = 0, GEN_MS = 170;
+  function setLife(on) {
+    lifeOn = on;
+    lifeBtn.setAttribute('aria-pressed', String(on));
+    lifeBtn.setAttribute('aria-label', on ? '라이프 게임 멈추기' : '라이프 게임 시작');
+    lifeBtn.querySelector('.play').style.display = on ? 'none' : '';
+    lifeBtn.querySelector('.pause').style.display = on ? '' : 'none';
+  }
+  lifeBtn.addEventListener('click', function () { ensureAudio(); setLife(!lifeOn); });
+
+  // 콘웨이 규칙: 이웃 3칸이면 태어나고, 2~3칸이면 살아남고, 나머지는 사라진다.
+  // 새로 태어난 칸은 이웃들의 색을 섞은 색이 된다. 화면 끝은 반대편과 이어진다.
+  function step(now) {
+    var n = cols * rows;
+    var nh = new Float32Array(n).fill(NaN), nl = new Float32Array(light), np = new Float32Array(phase), ns = new Float64Array(stamp);
+    var births = 0, deaths = 0, alive = 0, sumY = 0;
+    for (var y = 0; y < rows; y++) {
+      for (var x = 0; x < cols; x++) {
+        var cnt = 0, sx = 0, sy = 0, sl = 0;
+        for (var dy = -1; dy <= 1; dy++) {
+          for (var dx = -1; dx <= 1; dx++) {
+            if (!dx && !dy) continue;
+            var j = ((y + dy + rows) % rows) * cols + ((x + dx + cols) % cols);
+            var hj = hue[j];
+            if (!isNaN(hj)) {
+              cnt++;
+              var a = hj * Math.PI / 180;
+              sx += Math.cos(a); sy += Math.sin(a); sl += light[j];
+            }
+          }
+        }
+        var i = y * cols + x, live = !isNaN(hue[i]);
+        if (live && (cnt === 2 || cnt === 3)) { nh[i] = hue[i]; alive++; }
+        else if (!live && cnt === 3) {
+          nh[i] = (Math.atan2(sy, sx) * 180 / Math.PI + 360) % 360;
+          nl[i] = sl / 3; np[i] = Math.random() * Math.PI * 2; ns[i] = now;
+          births++; alive++; sumY += y;
+        } else if (live) deaths++;
+      }
+    }
+    hue = nh; light = nl; phase = np; stamp = ns;
+    if (births) {
+      // 새로 태어난 칸들이 화면 위쪽에 많을수록 높은 음
+      var idx = Math.min(9, Math.floor((1 - sumY / births / rows) * 10));
+      playNote(idx * 36 + 1, 0.035);
+    }
+    updateCount();
+    if (!alive || (!births && !deaths)) setLife(false);   // 다 사라지거나 멈춰 버리면 자동 정지
+  }
+
+  function frame(now) {
+    if (flushPending(now)) updateCount();
+    if (lifeOn && now - lastGen >= GEN_MS) { lastGen = now; step(now); }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+    var empty = getComputedStyle(document.documentElement).getPropertyValue('--cell-empty').trim() || '#242834';
+    var size = cell - GAP, inset = GAP / 2;
+    var tt = now * 0.0011;
+    for (var y = 0; y < rows; y++) {
+      for (var x = 0; x < cols; x++) {
+        var i = y * cols + x, h = hue[i];
+        var px = x * cell + inset, py = y * cell + inset;
+        if (isNaN(h)) {
+          ctx.fillStyle = empty;
+          ctx.fillRect(px, py, size, size);
+          continue;
+        }
+        var hh = h, ll = light[i];
+        if (!reduce) {
+          // 일렁임: 색과 밝기가 천천히 출렁인다
+          var w = Math.sin(tt + phase[i] + (x + y) * 0.18);
+          hh = h + w * 14;
+          ll = light[i] + w * 6;
+        }
+        ctx.fillStyle = 'hsl(' + hh.toFixed(1) + ' 88% ' + ll.toFixed(1) + '%)';
+        var t = (now - stamp[i]) / POP_MS;
+        if (!reduce && t < 1) {
+          var s = 1 + 0.4 * (1 - t) * (1 - t);
+          var grow = (size * s - size) / 2;
+          ctx.fillRect(px - grow, py - grow, size * s, size * s);
+        } else {
+          ctx.fillRect(px, py, size, size);
+        }
+      }
+    }
+    requestAnimationFrame(frame);
+  }
+
+  function cellAt(ev) {
+    var r = canvas.getBoundingClientRect();
+    return [Math.floor((ev.clientX - r.left) / cell), Math.floor((ev.clientY - r.top) / cell)];
+  }
+
+  /* ---------- 문지르기 ---------- */
+  var down = false, last = null, visited = null, moved = false;
+  var strokeHue = 0, strokeLight = 58;   // 손을 떼기 전까지 쓰는 한 가지 색
+
+  function strokeTo(c) {
+    var from = last || c, changed = false, now = performance.now();
+    var steps = Math.max(Math.abs(c[0] - from[0]), Math.abs(c[1] - from[1]));
+    for (var s = 0; s <= steps; s++) {
+      var t = steps ? s / steps : 0;
+      var x = Math.round(from[0] + (c[0] - from[0]) * t);
+      var y = Math.round(from[1] + (c[1] - from[1]) * t);
+      if (x < 0 || y < 0 || x >= cols || y >= rows) continue;
+      var key = y * cols + x;
+      if (visited.has(key)) continue;
+      visited.add(key);
+      setCell(key, strokeHue, now, strokeLight);
+      // 음높이는 위치로: 오른쪽·위로 갈수록 음이 올라간다
+      playNote((((x + (rows - 1 - y)) % 10) * 36) + 1);
+      changed = true;
+    }
+    last = c;
+    if (changed) updateCount();
+  }
+
+  canvas.addEventListener('pointerdown', function (ev) {
+    ensureAudio();
+    down = true; moved = false; last = null; visited = new Set();
+    try { canvas.setPointerCapture(ev.pointerId); } catch (e) {}
+    strokeHue = Math.random() * 360;
+    strokeLight = 54 + Math.random() * 10;
+    strokeTo(cellAt(ev));
+    ev.preventDefault();
+  });
+  canvas.addEventListener('pointermove', function (ev) {
+    if (!down) return;
+    var c = cellAt(ev);
+    if (last && c[0] === last[0] && c[1] === last[1]) return;
+    moved = true;
+    strokeTo(c);
+  });
+  function end() { down = false; last = null; }
+  canvas.addEventListener('pointerup', end);
+  canvas.addEventListener('pointercancel', end);
+
+  document.getElementById('reset').addEventListener('click', function () {
+    hue.fill(NaN);
+    pending = [];
+    setLife(false);
+    updateCount();
+  });
+
+  /* ---------- 그림으로 저장 ---------- */
+  // 화면 안에서 파일을 바로 내려받을 수 없어서, 이미지를 띄워 길게 누르거나 오른쪽 클릭으로 저장하게 한다
+  var shot = document.getElementById('shot'), shotImg = document.getElementById('shotImg');
+  document.getElementById('save').addEventListener('click', function () {
+    var px = 16, gap = 2;
+    var c = document.createElement('canvas');
+    c.width = cols * px + gap; c.height = rows * px + gap;
+    var g = c.getContext('2d');
+    g.fillStyle = '#050608'; g.fillRect(0, 0, c.width, c.height);
+    for (var y = 0; y < rows; y++) {
+      for (var x = 0; x < cols; x++) {
+        var i = y * cols + x;
+        g.fillStyle = isNaN(hue[i]) ? '#12151c' : 'hsl(' + hue[i].toFixed(1) + ' 88% ' + light[i].toFixed(1) + '%)';
+        g.fillRect(x * px + gap, y * px + gap, px - gap, px - gap);
+      }
+    }
+    shotImg.src = c.toDataURL('image/png');
+    shot.hidden = false;
+    document.getElementById('shotClose').focus();
+  });
+  function closeShot() { shot.hidden = true; }
+  document.getElementById('shotClose').addEventListener('click', closeShot);
+  shot.addEventListener('click', function (e) { if (e.target === shot) closeShot(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeShot(); });
+
+  if (window.ResizeObserver) new ResizeObserver(layout).observe(wrap);
+  else window.addEventListener('resize', layout);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(layout);
+  layout();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
